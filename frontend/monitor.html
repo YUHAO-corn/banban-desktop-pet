@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>BanBan Monitor</title>
+<style>
+  :root {
+    --ink: #211f1b;
+    --muted: #746f66;
+    --paper: #f4f1ea;
+    --panel: #fffaf0;
+    --line: #2a2824;
+    --green: #5d9b68;
+    --yellow: #d2a23a;
+    --red: #c64d3f;
+    --blue: #3b7b91;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    color: var(--ink);
+    background:
+      linear-gradient(90deg, rgba(33,31,27,0.04) 1px, transparent 1px),
+      linear-gradient(0deg, rgba(33,31,27,0.04) 1px, transparent 1px),
+      var(--paper);
+    background-size: 24px 24px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "PingFang SC", monospace;
+  }
+
+  .titlebar {
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px 0 18px;
+    background: rgba(255,250,240,0.92);
+    border-bottom: 2px solid var(--line);
+    -webkit-app-region: drag;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+  }
+
+  .brand-mark {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--line);
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 62%, #3d3b36 0 36%, transparent 37%), #8b8980;
+    box-shadow: inset 0 -5px 0 rgba(0,0,0,0.16);
+  }
+
+  .window-actions {
+    display: flex;
+    gap: 8px;
+    -webkit-app-region: no-drag;
+  }
+
+  button {
+    font: inherit;
+    color: var(--ink);
+    background: #fffdf6;
+    border: 2px solid var(--line);
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .icon-btn {
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+  }
+
+  .icon-btn:hover,
+  .primary-btn:hover { transform: translateY(-1px); }
+
+  .app {
+    height: calc(100vh - 44px);
+    display: grid;
+    grid-template-columns: minmax(280px, 32%) 1fr;
+    gap: 14px;
+    padding: 14px;
+  }
+
+  .panel {
+    background: rgba(255,250,240,0.94);
+    border: 2px solid var(--line);
+    border-radius: 8px;
+    box-shadow: 4px 4px 0 rgba(33,31,27,0.14);
+    min-width: 0;
+  }
+
+  .status-panel {
+    padding: 16px;
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    gap: 16px;
+  }
+
+  .label {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .score {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  #stress-score {
+    font-size: 72px;
+    line-height: 0.9;
+    font-weight: 900;
+    color: var(--green);
+    letter-spacing: 0;
+  }
+
+  .score-unit {
+    color: var(--muted);
+    font-size: 16px;
+  }
+
+  .meter {
+    height: 14px;
+    border: 2px solid var(--line);
+    border-radius: 999px;
+    background: #e5ded1;
+    overflow: hidden;
+  }
+
+  #stress-meter {
+    width: 0%;
+    height: 100%;
+    background: var(--green);
+    transition: width 160ms ease, background 160ms ease;
+  }
+
+  .status-grid {
+    display: grid;
+    gap: 10px;
+  }
+
+  .status-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 9px;
+    border-bottom: 1px solid rgba(33,31,27,0.16);
+  }
+
+  .status-value {
+    font-weight: 800;
+    text-align: right;
+  }
+
+  .primary-btn {
+    width: 100%;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-weight: 800;
+  }
+
+  .primary-btn.is-off {
+    background: #fff0e8;
+    color: #8a3b2e;
+  }
+
+  .main-panel {
+    display: grid;
+    grid-template-rows: minmax(210px, 0.9fr) auto auto;
+    overflow: hidden;
+  }
+
+  .preview-stage {
+    margin: 16px 16px 0;
+    min-height: 210px;
+    border: 2px solid var(--line);
+    border-radius: 8px;
+    background:
+      linear-gradient(135deg, rgba(33,31,27,0.06) 25%, transparent 25%) 0 0 / 18px 18px,
+      #dfd8ca;
+    overflow: hidden;
+    position: relative;
+    display: grid;
+    place-items: center;
+  }
+
+  #camera-preview {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+  }
+
+  .preview-empty {
+    padding: 18px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .preview-badge {
+    position: absolute;
+    left: 10px;
+    top: 10px;
+    padding: 4px 8px;
+    border: 2px solid var(--line);
+    border-radius: 999px;
+    background: rgba(255,250,240,0.9);
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .signals {
+    padding: 16px;
+    display: grid;
+    gap: 12px;
+    align-content: start;
+  }
+
+  .signal-row {
+    display: grid;
+    grid-template-columns: 136px 1fr 48px;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .bar {
+    height: 12px;
+    border: 2px solid var(--line);
+    border-radius: 999px;
+    background: #e5ded1;
+    overflow: hidden;
+  }
+
+  .bar-fill {
+    width: 0%;
+    height: 100%;
+    background: var(--blue);
+    transition: width 160ms ease;
+  }
+
+  .timeline {
+    border-top: 2px solid var(--line);
+    padding: 14px 16px;
+    background: rgba(33,31,27,0.04);
+    display: grid;
+    gap: 8px;
+  }
+
+  .event-line {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  @media (max-width: 760px) {
+    .app { grid-template-columns: 1fr; overflow: auto; }
+    .signal-row { grid-template-columns: 112px 1fr 42px; }
+  }
+</style>
+</head>
+<body>
+<header class="titlebar">
+  <div class="brand"><span class="brand-mark"></span><span>BANBAN MONITOR</span></div>
+  <div class="window-actions">
+    <button class="icon-btn" id="quit-btn" title="Quit">Q</button>
+    <button class="icon-btn" id="close-btn" title="Close">X</button>
+  </div>
+</header>
+
+<main class="app">
+  <section class="panel status-panel">
+    <div>
+      <div class="label">Stress Score</div>
+      <div class="score"><span id="stress-score">--</span><span class="score-unit">/ 100</span></div>
+      <div class="meter"><div id="stress-meter"></div></div>
+    </div>
+
+    <div class="status-grid">
+      <div class="status-row"><span>摄像头</span><span class="status-value" id="camera-status">启动中</span></div>
+      <div class="status-row"><span>后端</span><span class="status-value" id="backend-status">启动中</span></div>
+      <div class="status-row"><span>人脸</span><span class="status-value" id="face-status">等待</span></div>
+      <div class="status-row"><span>提醒状态</span><span class="status-value" id="alert-status">idle</span></div>
+    </div>
+
+    <div>
+      <div class="label">Latest Sample</div>
+      <div class="status-row"><span>时间</span><span class="status-value" id="sample-time">--</span></div>
+      <div class="status-row"><span>来源</span><span class="status-value">/tmp/banban_stress.json</span></div>
+    </div>
+
+    <button class="primary-btn" id="camera-toggle-btn">关闭摄像头</button>
+  </section>
+
+  <section class="panel main-panel">
+    <div class="preview-stage">
+      <img id="camera-preview" alt="摄像头隐私预览">
+      <div class="preview-empty" id="preview-empty">等待摄像头画面。检测到人脸后，这里会显示马赛克背景 + 人脸区域预览。</div>
+      <div class="preview-badge">PRIVACY VIEW</div>
+    </div>
+    <div class="signals">
+      <div class="label">Expression Signals</div>
+      <div class="signal-row"><span>Brow Furrow</span><div class="bar"><div class="bar-fill" id="bar-brow_furrow"></div></div><strong id="val-brow_furrow">0.00</strong></div>
+      <div class="signal-row"><span>Lip Press</span><div class="bar"><div class="bar-fill" id="bar-lip_press"></div></div><strong id="val-lip_press">0.00</strong></div>
+      <div class="signal-row"><span>Eye Squint</span><div class="bar"><div class="bar-fill" id="bar-eye_squint"></div></div><strong id="val-eye_squint">0.00</strong></div>
+      <div class="signal-row"><span>Expression Freeze</span><div class="bar"><div class="bar-fill" id="bar-expression_freeze"></div></div><strong id="val-expression_freeze">0.00</strong></div>
+    </div>
+    <div class="timeline">
+      <div class="event-line"><span>当前判断</span><strong id="summary-line">等待第一帧数据</strong></div>
+      <div class="event-line"><span>窗口状态</span><strong id="window-line">可以从右上角关闭</strong></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const scoreEl = document.getElementById('stress-score');
+const meterEl = document.getElementById('stress-meter');
+const cameraStatusEl = document.getElementById('camera-status');
+const backendStatusEl = document.getElementById('backend-status');
+const faceStatusEl = document.getElementById('face-status');
+const alertStatusEl = document.getElementById('alert-status');
+const sampleTimeEl = document.getElementById('sample-time');
+const summaryLineEl = document.getElementById('summary-line');
+const cameraToggleBtn = document.getElementById('camera-toggle-btn');
+const previewImg = document.getElementById('camera-preview');
+const previewEmpty = document.getElementById('preview-empty');
+
+const signalKeys = ['brow_furrow', 'lip_press', 'eye_squint', 'expression_freeze'];
+let cameraEnabled = true;
+
+function scoreColor(score) {
+  if (score >= 85) return 'var(--red)';
+  if (score >= 60) return 'var(--yellow)';
+  return 'var(--green)';
+}
+
+function setCameraEnabled(enabled) {
+  cameraEnabled = !!enabled;
+  cameraToggleBtn.textContent = cameraEnabled ? '关闭摄像头' : '打开摄像头';
+  cameraToggleBtn.classList.toggle('is-off', !cameraEnabled);
+}
+
+function renderStress(data) {
+  const score = Number(data && data.stress_score) || 0;
+  const color = scoreColor(score);
+  scoreEl.textContent = cameraEnabled ? String(score).padStart(2, '0') : '--';
+  scoreEl.style.color = color;
+  meterEl.style.width = cameraEnabled ? `${Math.max(0, Math.min(100, score))}%` : '0%';
+  meterEl.style.background = color;
+
+  const signals = (data && data.signals) || {};
+  signalKeys.forEach((key) => {
+    const val = Number(signals[key]) || 0;
+    document.getElementById(`bar-${key}`).style.width = `${Math.round(Math.max(0, Math.min(1, val)) * 100)}%`;
+    document.getElementById(`val-${key}`).textContent = val.toFixed(2);
+  });
+
+  faceStatusEl.textContent = data && data.face_detected ? '检测到' : '未检测';
+  sampleTimeEl.textContent = data && data.timestamp ? data.timestamp : '--';
+  summaryLineEl.textContent = cameraEnabled
+    ? (data && data.face_detected ? `压力值 ${score}` : '等待人脸进入画面')
+    : '摄像头已手动关闭';
+}
+
+function renderMonitorState(state) {
+  setCameraEnabled(state.cameraEnabled);
+  cameraStatusEl.textContent = state.cameraStatus === 'off'
+    ? '已关闭'
+    : state.cameraStatus === 'blind' ? '不可见' : '正常';
+  backendStatusEl.textContent = state.backendStatus || 'unknown';
+  alertStatusEl.textContent = state.alert && state.alert.state ? state.alert.state : 'idle';
+  if (state.previewUrl && state.cameraEnabled) {
+    previewImg.src = state.previewUrl;
+    previewImg.style.display = 'block';
+    previewEmpty.style.display = 'none';
+  } else {
+    previewImg.removeAttribute('src');
+    previewImg.style.display = 'none';
+    previewEmpty.style.display = 'block';
+    previewEmpty.textContent = state.cameraEnabled
+      ? '等待摄像头画面。检测到人脸后，这里会显示马赛克背景 + 人脸区域预览。'
+      : '摄像头已关闭。';
+  }
+  renderStress(state.stress);
+}
+
+document.getElementById('close-btn').addEventListener('click', () => {
+  window.electronAPI.closeMonitor();
+});
+
+document.getElementById('quit-btn').addEventListener('click', () => {
+  window.electronAPI.quitApp();
+});
+
+cameraToggleBtn.addEventListener('click', () => {
+  window.electronAPI.setCameraEnabled(!cameraEnabled);
+});
+
+if (window.electronAPI) {
+  window.electronAPI.onCameraEnabled(setCameraEnabled);
+  window.electronAPI.onStressUpdate(renderStress);
+  window.electronAPI.onMonitorState(renderMonitorState);
+}
+</script>
+</body>
+</html>

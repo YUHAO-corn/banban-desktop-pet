@@ -1,0 +1,12 @@
+{
+  "name": "banban-desktop-pet",
+  "version": "1.0.0",
+  "description": "BanBan desktop pet - Electron host",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "electron": "^30.0.0"
+  }
+}
