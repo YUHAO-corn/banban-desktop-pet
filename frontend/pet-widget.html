@@ -2,87 +2,115 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>Desktop Pet Widget - Raccoon</title>
+<title>BanBan Desktop Pet</title>
 <style>
-  /* 宿主框架（Electron/Tauri）应将窗口设置为透明 + 无边框 + 置顶 + 鼠标穿透
-     body 透明背景仅用于浏览器预览，真实部署时由宿主负责透明化 */
+  :root {
+    --animal-scale: 0.6;
+    --ui-scale: 1;
+  }
+
+  html,
   body {
     margin: 0;
     padding: 0;
+    width: 100%;
+    height: 100%;
     background: transparent;
     overflow: hidden;
     font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
   }
+
   #pet-container {
     position: relative;
     width: 360px;
     height: 320px;
     user-select: none;
   }
-  #pet-svg {
+
+  #pet-stage {
     position: absolute;
-    left: 0;
-    top: 0;
-    overflow: visible;
-    z-index: 1;
+    left: 50%;
+    top: 48px;
+    width: 226px;
+    height: 245px;
+    transform: translateX(-50%) scale(var(--animal-scale));
+    transform-origin: center bottom;
+    z-index: 2;
   }
+
+  #pet-canvas {
+    width: 100%;
+    height: 100%;
+    image-rendering: auto;
+  }
+
   #ui-elements {
     position: absolute;
-    top: 224px;
     left: 50%;
-    transform: translateX(-50%);
+    bottom: 12px;
+    transform: translateX(-50%) scale(var(--ui-scale));
+    transform-origin: center bottom;
     display: flex;
     gap: 4px;
-    z-index: 6;
+    z-index: 8;
     align-items: center;
   }
+
   #stress-display {
-    background: rgba(28, 26, 24, 0.92);
+    background: rgba(28, 26, 24, 0.9);
     padding: 5px 10px;
     border-radius: 6px;
     display: flex;
     align-items: center;
     gap: 6px;
+    box-shadow: 0 6px 14px rgba(0,0,0,0.12);
   }
+
   #stress-display .label {
     font-size: 9px;
-    color: rgba(255,255,255,0.45);
-    font-weight: 500;
-    letter-spacing: 0.5px;
+    color: rgba(255,255,255,0.48);
+    font-weight: 600;
   }
+
   #stress-num {
+    min-width: 28px;
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 600;
     color: #A8D88C;
-    font-family: monospace;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    text-align: right;
   }
+
   #settings-btn {
-    background: rgba(28, 26, 24, 0.92);
+    background: rgba(28, 26, 24, 0.9);
     border: none;
     padding: 0;
-    width: 26px;
-    height: 26px;
+    width: 27px;
+    height: 27px;
     border-radius: 6px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
+    box-shadow: 0 6px 14px rgba(0,0,0,0.12);
   }
+
   #settings-menu {
     display: none;
     position: absolute;
-    bottom: 82px;
+    bottom: 48px;
     left: 50%;
     transform: translateX(-50%);
-    background: white;
+    background: rgba(255,255,255,0.98);
     border: 2px solid #1a1a1a;
-    border-radius: 10px;
+    border-radius: 8px;
     padding: 12px 14px;
     min-width: 220px;
     z-index: 20;
     font-size: 13px;
-    box-shadow: 0 12px 24px rgba(0,0,0,0.14);
+    box-shadow: 0 12px 24px rgba(0,0,0,0.16);
   }
+
   #settings-menu .menu-item {
     width: 100%;
     text-align: left;
@@ -98,14 +126,14 @@
     gap: 8px;
     color: #1a1a1a;
   }
+
   #settings-menu .menu-item:hover { background: #f0f0f0; }
   #settings-menu .menu-item svg { flex: 0 0 auto; }
   #camera-toggle-btn.is-off { color: #8a3b2e; }
   #camera-toggle-btn.is-off svg { opacity: 0.75; }
   #settings-menu .divider { border-top: 1px solid #e0e0e0; margin: 6px 0; }
-  #settings-menu .scale-row {
-    margin-bottom: 8px;
-  }
+  #settings-menu .scale-row { margin-bottom: 8px; }
+
   #settings-menu .scale-label {
     display: flex;
     justify-content: space-between;
@@ -113,24 +141,29 @@
     color: #555;
     font-size: 12px;
   }
+
   #settings-menu input[type=range] { width: 100%; }
+
   #speech-bubble {
     display: none;
     position: absolute;
     left: 50%;
-    top: 30px;
-    transform: translateX(-30%);
+    top: 12px;
+    transform: translateX(-32%);
     background: white;
     border: 2.5px solid #1a1a1a;
-    border-radius: 14px;
+    border-radius: 12px;
     padding: 10px 14px 12px 14px;
     max-width: 220px;
     font-size: 13px;
     line-height: 1.5;
     color: #1a1a1a;
-    z-index: 10;
+    z-index: 12;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.12);
   }
+
   #speech-text { padding-right: 14px; margin-bottom: 8px; }
+
   #speech-bubble .accept-btn {
     background: #1a1a1a;
     color: white;
@@ -141,6 +174,7 @@
     font-size: 12px;
     font-weight: 500;
   }
+
   #speech-bubble .dismiss-btn {
     position: absolute;
     top: 4px;
@@ -152,235 +186,221 @@
     background: transparent;
     font-size: 12px;
     cursor: pointer;
-    color: #aaa;
+    color: #888;
     line-height: 1;
+  }
+
+  #calibration-card {
+    display: none;
+    position: absolute;
+    left: 50%;
+    top: 12px;
+    width: 252px;
+    transform: translateX(-50%);
+    z-index: 18;
+    background: rgba(255,250,240,0.97);
+    border: 2px solid #1a1a1a;
+    border-radius: 8px;
+    padding: 10px 12px 12px;
+    box-shadow: 0 12px 22px rgba(0,0,0,0.16);
+    color: #1a1a1a;
+  }
+
+  .calibration-topline {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 5px;
+  }
+
+  #calibration-count {
+    min-width: 36px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 28px;
+    line-height: 1;
+    font-weight: 800;
+    color: #3b7b91;
+  }
+
+  .calibration-title {
+    font-size: 12px;
+    line-height: 1.4;
+    font-weight: 700;
+    text-align: right;
+  }
+
+  .calibration-copy {
+    font-size: 12px;
+    line-height: 1.45;
+    color: #4d4942;
+    margin-bottom: 9px;
+  }
+
+  .calibration-track {
+    height: 8px;
+    border: 2px solid #1a1a1a;
+    border-radius: 999px;
+    overflow: hidden;
+    background: #e5ded1;
+  }
+
+  #calibration-fill {
+    width: 0%;
+    height: 100%;
+    background: #3b7b91;
+    transition: width 180ms ease;
   }
 </style>
 </head>
 <body>
 
 <div id="pet-container">
+  <div id="pet-stage">
+    <canvas id="pet-canvas" width="192" height="208" aria-label="BanBan"></canvas>
+  </div>
 
-<svg id="pet-svg" width="360" height="240" viewBox="0 0 360 240">
-<defs>
-<clipPath id="manhole-clip">
-<ellipse cx="180" cy="180" rx="78" ry="20"/>
-</clipPath>
-</defs>
+  <div id="ui-elements">
+    <div id="stress-display">
+      <span class="label">STRESS</span>
+      <span id="stress-num">---</span>
+    </div>
+    <button id="settings-btn" aria-label="Settings">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <line x1="2.5" y1="4" x2="11.5" y2="4" stroke="rgba(255,255,255,0.72)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="2.5" y1="7" x2="11.5" y2="7" stroke="rgba(255,255,255,0.72)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="2.5" y1="10" x2="11.5" y2="10" stroke="rgba(255,255,255,0.72)" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
 
-<g id="manhole-shadow">
-<ellipse cx="180" cy="184" rx="80" ry="22" fill="#1a1a1a" opacity="0.25"/>
-</g>
+  <div id="settings-menu">
+    <button class="menu-item" id="camera-toggle-btn">
+      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+        <rect x="2" y="4" width="7" height="6" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M 9 6 L 13 4.5 V 9.5 L 9 8 Z" fill="currentColor"/>
+      </svg>
+      <span id="camera-toggle-label">关闭摄像头</span>
+    </button>
+    <button class="menu-item" id="open-monitor-btn">
+      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+        <rect x="2" y="3" width="11" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M 4 8 L 6 6 L 8 7.5 L 10.5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M 6 13 H 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <span>打开 Monitor</span>
+    </button>
+    <div class="divider"></div>
+    <div class="scale-row">
+      <div class="scale-label"><span>动物大小</span><span id="animal-scale-val">1.0x</span></div>
+      <input type="range" id="animal-scale" min="0.5" max="1.5" step="0.1" value="1.0">
+    </div>
+    <div class="scale-row">
+      <div class="scale-label"><span>UI 大小</span><span id="ui-scale-val">1.0x</span></div>
+      <input type="range" id="ui-scale" min="0.5" max="1.5" step="0.1" value="1.0">
+    </div>
+  </div>
 
-<g id="manhole">
-<ellipse cx="180" cy="180" rx="80" ry="22" fill="#3a3a3a" stroke="#1a1a1a" stroke-width="3"/>
-<ellipse cx="180" cy="178" rx="76" ry="19" fill="#4a4a4a"/>
-<ellipse cx="180" cy="180" rx="78" ry="20" fill="#2a2a2a"/>
-<text x="180" y="195" text-anchor="middle" fill="#5a5a5a" font-family="monospace" font-size="9" font-weight="bold">SEWER</text>
-<circle cx="155" cy="178" r="2" fill="#5a5a5a"/>
-<circle cx="205" cy="178" r="2" fill="#5a5a5a"/>
-<circle cx="170" cy="172" r="1.5" fill="#5a5a5a"/>
-<circle cx="190" cy="172" r="1.5" fill="#5a5a5a"/>
-</g>
+  <div id="calibration-card">
+    <div class="calibration-topline">
+      <div id="calibration-count">3</div>
+      <div class="calibration-title">正在建立你的平静基线</div>
+    </div>
+    <div class="calibration-copy" id="calibration-copy">请保持表情放松、自然看向屏幕，这会提高后续识别准确率。</div>
+    <div class="calibration-track"><div id="calibration-fill"></div></div>
+  </div>
 
-<g id="raccoon" clip-path="url(#manhole-clip)">
-<g id="raccoon-body" transform="translate(0, 0)">
-<ellipse cx="180" cy="190" rx="38" ry="32" fill="#7a7a7a" stroke="#1a1a1a" stroke-width="3"/>
-<ellipse cx="180" cy="170" rx="32" ry="28" fill="#9a9a9a" stroke="#1a1a1a" stroke-width="3"/>
-
-<path d="M 158 152 Q 152 142 156 138 Q 162 142 168 150 Z" fill="#7a7a7a" stroke="#1a1a1a" stroke-width="2.5" stroke-linejoin="round"/>
-<path d="M 158 150 Q 156 144 160 142 Q 164 146 166 150 Z" fill="#5a5a5a"/>
-
-<path d="M 202 152 Q 208 142 204 138 Q 198 142 192 150 Z" fill="#7a7a7a" stroke="#1a1a1a" stroke-width="2.5" stroke-linejoin="round"/>
-<path d="M 202 150 Q 204 144 200 142 Q 196 146 194 150 Z" fill="#5a5a5a"/>
-
-<ellipse cx="166" cy="172" rx="11" ry="8" fill="#1a1a1a"/>
-<ellipse cx="194" cy="172" rx="11" ry="8" fill="#1a1a1a"/>
-
-<g id="left-eye-normal">
-<circle cx="166" cy="172" r="5" fill="#FAFAFA"/>
-<circle id="left-pupil" cx="166" cy="172" r="3" fill="#1a1a1a"/>
-<circle id="left-shine" cx="167" cy="170" r="1" fill="#FFFFFF"/>
-</g>
-<g id="right-eye-normal">
-<circle cx="194" cy="172" r="5" fill="#FAFAFA"/>
-<circle id="right-pupil" cx="194" cy="172" r="3" fill="#1a1a1a"/>
-<circle id="right-shine" cx="195" cy="170" r="1" fill="#FFFFFF"/>
-</g>
-
-<g id="happy-eyes" style="display: none;">
-<path d="M 161 173 Q 166 166 171 173" fill="none" stroke="#1a1a1a" stroke-width="2.5" stroke-linecap="round"/>
-<path d="M 189 173 Q 194 166 199 173" fill="none" stroke="#1a1a1a" stroke-width="2.5" stroke-linecap="round"/>
-</g>
-
-<ellipse cx="180" cy="184" rx="9" ry="6" fill="#FAFAFA"/>
-<ellipse cx="180" cy="184" rx="3" ry="2" fill="#1a1a1a"/>
-
-<g id="mouth">
-<path id="mouth-path" d="M 180 188 Q 175 191 172 189" fill="none" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round"/>
-<path d="M 180 188 Q 185 191 188 189" fill="none" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round"/>
-</g>
-</g>
-
-<g id="card-arm" style="display: none;">
-<ellipse cx="220" cy="200" rx="8" ry="14" fill="#7a7a7a" stroke="#1a1a1a" stroke-width="2.5" transform="rotate(20 220 200)"/>
-<rect id="warning-card" x="220" y="155" width="28" height="38" rx="2" fill="#FFD43B" stroke="#1a1a1a" stroke-width="2.5" transform="rotate(15 234 174)"/>
-<text id="card-text" x="234" y="180" text-anchor="middle" fill="#1a1a1a" font-family="monospace" font-weight="bold" font-size="14" transform="rotate(15 234 174)">!</text>
-</g>
-
-<g id="sweat-drops" style="display: none;">
-<ellipse id="sweat1" cx="148" cy="158" rx="3" ry="5" fill="#6BA4D8" stroke="#1a1a1a" stroke-width="1.5"/>
-<ellipse id="sweat2" cx="212" cy="160" rx="2.5" ry="4" fill="#6BA4D8" stroke="#1a1a1a" stroke-width="1.5"/>
-</g>
-
-</g>
-
-<g id="confused-raccoon" style="display: none;">
-<ellipse cx="180" cy="170" rx="32" ry="28" fill="#9a9a9a" stroke="#1a1a1a" stroke-width="3"/>
-<path d="M 158 152 Q 152 142 156 138 Q 162 142 168 150 Z" fill="#7a7a7a" stroke="#1a1a1a" stroke-width="2.5" stroke-linejoin="round"/>
-<path d="M 202 152 Q 208 142 204 138 Q 198 142 192 150 Z" fill="#7a7a7a" stroke="#1a1a1a" stroke-width="2.5" stroke-linejoin="round"/>
-<ellipse cx="166" cy="172" rx="11" ry="8" fill="#1a1a1a"/>
-<ellipse cx="194" cy="172" rx="11" ry="8" fill="#1a1a1a"/>
-<circle cx="166" cy="172" r="5" fill="#FAFAFA"/>
-<circle cx="194" cy="172" r="5" fill="#FAFAFA"/>
-<circle cx="166" cy="172" r="2.5" fill="#1a1a1a"/>
-<circle cx="194" cy="172" r="2.5" fill="#1a1a1a"/>
-<ellipse cx="180" cy="184" rx="9" ry="6" fill="#FAFAFA"/>
-<ellipse cx="180" cy="184" rx="3" ry="2" fill="#1a1a1a"/>
-<path d="M 175 190 Q 180 188 185 190" fill="none" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round"/>
-<g id="question-mark">
-<text x="220" y="155" font-family="monospace" font-size="28" font-weight="bold" fill="#1a1a1a" stroke="white" stroke-width="3" paint-order="stroke">?</text>
-</g>
-</g>
-
-<g id="feedback-hearts" style="display: none;">
-<g id="heart1">
-<path d="M 180 165 C 178 162, 174 162, 174 166 C 174 170, 180 174, 180 174 C 180 174, 186 170, 186 166 C 186 162, 182 162, 180 165 Z" fill="#F4537E" stroke="#1a1a1a" stroke-width="2"/>
-</g>
-<g id="heart2">
-<path d="M 165 165 C 163 162, 159 162, 159 166 C 159 170, 165 174, 165 174 C 165 174, 171 170, 171 166 C 171 162, 167 162, 165 165 Z" fill="#F4537E" stroke="#1a1a1a" stroke-width="2"/>
-</g>
-<g id="heart3">
-<path d="M 195 165 C 193 162, 189 162, 189 166 C 189 170, 195 174, 195 174 C 195 174, 201 170, 201 166 C 201 162, 197 162, 195 165 Z" fill="#F4537E" stroke="#1a1a1a" stroke-width="2"/>
-</g>
-</g>
-
-</svg>
-
-<div id="ui-elements">
-<div id="stress-display">
-<span class="label">STRESS</span>
-<span id="stress-num">020</span>
-</div>
-<button id="settings-btn" aria-label="Settings">
-<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-<line x1="2.5" y1="4" x2="11.5" y2="4" stroke="rgba(255,255,255,0.7)" stroke-width="1.5" stroke-linecap="round"/>
-<line x1="2.5" y1="7" x2="11.5" y2="7" stroke="rgba(255,255,255,0.7)" stroke-width="1.5" stroke-linecap="round"/>
-<line x1="2.5" y1="10" x2="11.5" y2="10" stroke="rgba(255,255,255,0.7)" stroke-width="1.5" stroke-linecap="round"/>
-</svg>
-</button>
-</div>
-
-<div id="settings-menu">
-<button class="menu-item" id="camera-toggle-btn">
-<svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
-<rect x="2" y="4" width="7" height="6" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
-<path d="M 9 6 L 13 4.5 V 9.5 L 9 8 Z" fill="currentColor"/>
-</svg>
-<span id="camera-toggle-label">关闭摄像头</span>
-</button>
-<button class="menu-item" id="open-monitor-btn">
-<svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
-<rect x="2" y="3" width="11" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
-<path d="M 4 8 L 6 6 L 8 7.5 L 10.5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M 6 13 H 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-</svg>
-<span>打开 Monitor</span>
-</button>
-<div class="divider"></div>
-<div class="scale-row">
-<div class="scale-label"><span>动物大小</span><span id="animal-scale-val">1.0×</span></div>
-<input type="range" id="animal-scale" min="0.5" max="1.5" step="0.1" value="1.0">
-</div>
-<div class="scale-row">
-<div class="scale-label"><span>UI 大小</span><span id="ui-scale-val">1.0×</span></div>
-<input type="range" id="ui-scale" min="0.5" max="1.5" step="0.1" value="1.0">
-</div>
-</div>
-
-<div id="speech-bubble">
-<button class="dismiss-btn" id="speech-dismiss-btn">✕</button>
-<div id="speech-text"></div>
-<div style="display: flex; justify-content: flex-end;">
-<button class="accept-btn" id="speech-accept-btn">好的</button>
-</div>
-<svg width="18" height="12" viewBox="0 0 18 12" style="position: absolute; bottom: -10px; left: 30%;">
-<path d="M 3 0 L 9 10 L 15 0 Z" fill="white" stroke="#1a1a1a" stroke-width="2.5" stroke-linejoin="round"/>
-<path d="M 4 0 L 14 0" stroke="white" stroke-width="3"/>
-</svg>
-</div>
-
+  <div id="speech-bubble">
+    <button class="dismiss-btn" id="speech-dismiss-btn">x</button>
+    <div id="speech-text"></div>
+    <div style="display: flex; justify-content: flex-end;">
+      <button class="accept-btn" id="speech-accept-btn">好的</button>
+    </div>
+    <svg width="18" height="12" viewBox="0 0 18 12" style="position: absolute; bottom: -10px; left: 30%;" aria-hidden="true">
+      <path d="M 3 0 L 9 10 L 15 0 Z" fill="white" stroke="#1a1a1a" stroke-width="2.5" stroke-linejoin="round"/>
+      <path d="M 4 0 L 14 0" stroke="white" stroke-width="3"/>
+    </svg>
+  </div>
 </div>
 
 <script>
 (function() {
 'use strict';
 
-// =========================================================================
-// 桌面宠物 UI 模块 - 浣熊版
-// 详细规范见 pet-widget-spec.md
-// =========================================================================
+const SPRITESHEET_SRC = '../assets/pets/banban/spritesheet.webp';
+const CELL_WIDTH = 192;
+const CELL_HEIGHT = 208;
+const BASE_ANIMAL_SCALE = 0.6;
+const DEFAULT_ANIMAL_SCALE = 1.0;
+const DEFAULT_UI_SCALE = 1.0;
+const ANIMATIONS = {
+  idle: { row: 0, frames: 6, fps: 3, loop: true },
+  'running-right': { row: 1, frames: 8, fps: 12, loop: true },
+  'running-left': { row: 2, frames: 8, fps: 12, loop: true },
+  waving: { row: 3, frames: 4, fps: 6, loop: true },
+  jumping: { row: 4, frames: 5, fps: 9, loop: false },
+  failed: { row: 5, frames: 8, fps: 6, loop: true },
+  waiting: { row: 6, frames: 6, fps: 3, loop: true },
+  running: { row: 7, frames: 6, fps: 11, loop: true },
+  review: { row: 8, frames: 6, fps: 5, loop: true }
+};
 
-// ---------- DOM 引用 ----------
+const petContainer = document.getElementById('pet-container');
+const petStage = document.getElementById('pet-stage');
+const canvas = document.getElementById('pet-canvas');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
 const stressNum = document.getElementById('stress-num');
 const speechBubble = document.getElementById('speech-bubble');
 const speechText = document.getElementById('speech-text');
-const cardArmGroup = document.getElementById('card-arm');
-const warningCard = document.getElementById('warning-card');
-const cardText = document.getElementById('card-text');
-const sweatDrops = document.getElementById('sweat-drops');
-const raccoonBody = document.getElementById('raccoon-body');
-const raccoonNormal = document.getElementById('raccoon');
-const raccoonConfused = document.getElementById('confused-raccoon');
-const leftPupil = document.getElementById('left-pupil');
-const rightPupil = document.getElementById('right-pupil');
-const leftShine = document.getElementById('left-shine');
-const rightShine = document.getElementById('right-shine');
-const leftEyeNormal = document.getElementById('left-eye-normal');
-const rightEyeNormal = document.getElementById('right-eye-normal');
-const happyEyes = document.getElementById('happy-eyes');
-const mouthPath = document.getElementById('mouth-path');
+const calibrationCard = document.getElementById('calibration-card');
+const calibrationCount = document.getElementById('calibration-count');
+const calibrationCopy = document.getElementById('calibration-copy');
+const calibrationFill = document.getElementById('calibration-fill');
 const settingsMenu = document.getElementById('settings-menu');
-const feedbackHearts = document.getElementById('feedback-hearts');
-const petSvg = document.getElementById('pet-svg');
 const uiElements = document.getElementById('ui-elements');
+const cameraToggleBtn = document.getElementById('camera-toggle-btn');
+const cameraToggleLabel = document.getElementById('camera-toggle-label');
+const animalScale = document.getElementById('animal-scale');
+const uiScale = document.getElementById('ui-scale');
 
-// ---------- 状态 ----------
+const spritesheet = new Image();
+
 const state = {
-  frame: 0,
-  stress: 20,
-  cameraStatus: 'ok',
+  stress: 0,
+  cameraStatus: 'blind',
   cameraEnabled: true,
+  calibrationState: 'waiting',
+  calibrationProgress: 0,
   speechVisible: false,
   lastSpeechTrigger: 0,
   blindTriggerTimer: 0,
-  happyTimer: 0,
-  heartAnimFrame: 0,
-  heartAnimActive: false,
-  autoSpeechEnabled: true
+  autoSpeechEnabled: true,
+  currentAnimation: 'idle',
+  targetAnimation: 'idle',
+  returnAnimation: 'idle',
+  frameIndex: 0,
+  frameElapsed: 0,
+  lastTick: 0,
+  playbackSpeed: 1,
+  dragging: false,
+  dragStartX: 0,
+  dragStartY: 0,
+  dragDistance: 0,
+  lastMoveX: 0,
+  lastMoveY: 0
 };
 
 let messages = {
-  low: ['你今天看起来不错', '保持这个状态啊', '我在偷偷看你呢～'],
+  low: ['你今天看起来不错', '保持这个状态啊', '我在旁边陪你工作'],
   mid: ['有点紧张了哦', '休息一下？', '来，深呼吸'],
-  high: ['🟨 黄牌警告！\n你压力太大了', '🟥 红牌！\n现在必须休息', '裁判我来了\n请你下场冷静'],
+  high: ['黄牌警告！\n你压力有点高', '红牌提醒！\n现在该休息了', '裁判来了\n请你下场冷静一下'],
   blind: [
     '咦？看不到你了…\n摄像头是不是被挡住啦？',
     '你跑哪去了？\n摄像头可能出问题啦',
     '这里黑黑的什么都看不见…\n检查一下摄像头吧'
   ],
   off: [
-    '摄像头已经关掉啦\n我先不偷看你了',
+    '摄像头已经关掉啦\n我先不看你了',
     '收到，我把摄像头关上\n需要时再叫我'
   ]
 };
@@ -395,14 +415,153 @@ const callbacks = {
   uiScaleChange: []
 };
 
-function getMood(stress) {
-  if (stress < 33) return 0;
-  if (stress < 66) return 1;
-  if (stress < 85) return 2;
-  return 3;
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
 
-// ---------- 说话 ----------
+function moodAnimation() {
+  if (state.cameraStatus === 'blind') return 'waiting';
+  if (state.cameraStatus === 'off') return 'idle';
+  if (state.stress < 33) return 'idle';
+  if (state.stress < 65) return 'waiting';
+  if (state.stress < 85) return 'review';
+  return 'failed';
+}
+
+function play(animation, options) {
+  if (!ANIMATIONS[animation]) return;
+  const once = options && options.once;
+  if (once) {
+    state.returnAnimation = (options && options.returnTo) || moodAnimation();
+  } else {
+    state.targetAnimation = animation;
+  }
+  if (state.currentAnimation !== animation || (options && options.restart)) {
+    state.currentAnimation = animation;
+    state.frameIndex = 0;
+    state.frameElapsed = 0;
+  }
+}
+
+function playOnce(animation, returnTo) {
+  play(animation, { once: true, returnTo, restart: true });
+}
+
+function syncAnimation() {
+  if (state.dragging || state.currentAnimation === 'jumping') return;
+  play(moodAnimation());
+}
+
+function drawFrame() {
+  ctx.clearRect(0, 0, CELL_WIDTH, CELL_HEIGHT);
+  if (!spritesheet.complete || !spritesheet.naturalWidth) return;
+  const animation = ANIMATIONS[state.currentAnimation] || ANIMATIONS.idle;
+  const sx = state.frameIndex * CELL_WIDTH;
+  const sy = animation.row * CELL_HEIGHT;
+  ctx.drawImage(spritesheet, sx, sy, CELL_WIDTH, CELL_HEIGHT, 0, 0, CELL_WIDTH, CELL_HEIGHT);
+}
+
+function tick(now) {
+  if (!state.lastTick) state.lastTick = now;
+  const dt = Math.min(100, now - state.lastTick);
+  state.lastTick = now;
+
+  const animation = ANIMATIONS[state.currentAnimation] || ANIMATIONS.idle;
+  const frameDuration = 1000 / (animation.fps * state.playbackSpeed);
+  state.frameElapsed += dt;
+  while (state.frameElapsed >= frameDuration) {
+    state.frameElapsed -= frameDuration;
+    state.frameIndex += 1;
+    if (state.frameIndex >= animation.frames) {
+      if (animation.loop) {
+        state.frameIndex = 0;
+      } else {
+        state.frameIndex = 0;
+        state.currentAnimation = state.returnAnimation || moodAnimation();
+      }
+    }
+  }
+
+  updateStatusDisplay();
+  handleAutoSpeech();
+  drawFrame();
+  requestAnimationFrame(tick);
+}
+
+function updateStatusDisplay() {
+  if (state.cameraStatus === 'off') {
+    stressNum.textContent = 'OFF';
+    stressNum.style.color = '#FFB870';
+    return;
+  }
+  if (state.cameraStatus === 'blind') {
+    stressNum.textContent = '---';
+    stressNum.style.color = '#888';
+    return;
+  }
+  if (state.calibrationState !== 'ready') {
+    stressNum.textContent = 'CAL';
+    stressNum.style.color = '#7db8c8';
+    return;
+  }
+
+  const stress = state.stress;
+  stressNum.textContent = String(stress).padStart(3, '0');
+  if (stress < 33) stressNum.style.color = '#A8D88C';
+  else if (stress < 66) stressNum.style.color = '#FFE898';
+  else if (stress < 85) stressNum.style.color = '#FFB870';
+  else stressNum.style.color = '#FF8888';
+}
+
+function handleAutoSpeech() {
+  if (state.cameraStatus === 'off') return;
+  if (state.calibrationState !== 'ready') return;
+  if (state.cameraStatus === 'blind') {
+    if (state.blindTriggerTimer > 0) {
+      state.blindTriggerTimer -= 1;
+      if (state.blindTriggerTimer === 0 && !state.speechVisible && state.autoSpeechEnabled) {
+        triggerSpeechInternal();
+      }
+    }
+    if (state.autoSpeechEnabled && !state.speechVisible && Date.now() - state.lastSpeechTrigger > 15000) {
+      triggerSpeechInternal();
+    }
+    return;
+  }
+  if (state.autoSpeechEnabled
+      && state.stress >= 65
+      && !state.speechVisible
+      && Date.now() - state.lastSpeechTrigger > 8000) {
+    triggerSpeechInternal();
+  }
+}
+
+function updateCalibration(calibration) {
+  const stateName = calibration && calibration.state ? calibration.state : 'ready';
+  state.calibrationState = stateName;
+  state.calibrationProgress = clamp(Number(calibration && calibration.progress) || 0, 0, 1);
+
+  if (stateName === 'calibrating') {
+    const phase = state.calibrationProgress < 0.34 ? 3 : state.calibrationProgress < 0.67 ? 2 : 1;
+    calibrationCount.textContent = String(phase);
+    calibrationCopy.textContent = '请保持表情放松、自然看向屏幕，这会提高后续识别准确率。';
+    calibrationFill.style.width = `${Math.round(state.calibrationProgress * 100)}%`;
+    calibrationCard.style.display = 'block';
+    return;
+  }
+
+  if (stateName === 'waiting') {
+    calibrationCount.textContent = '...';
+    calibrationCopy.textContent = '等待检测到人脸后开始校准。';
+    calibrationFill.style.width = '0%';
+    calibrationCard.style.display = 'block';
+    return;
+  }
+
+  calibrationFill.style.width = '100%';
+  calibrationCard.style.display = 'none';
+}
+
 function triggerSpeechInternal(customMessage) {
   let msg;
   if (customMessage) {
@@ -413,10 +572,12 @@ function triggerSpeechInternal(customMessage) {
       pool = messages.blind;
     } else if (state.cameraStatus === 'off') {
       pool = messages.off;
+    } else if (state.stress < 33) {
+      pool = messages.low;
+    } else if (state.stress < 66) {
+      pool = messages.mid;
     } else {
-      if (state.stress < 33) pool = messages.low;
-      else if (state.stress < 66) pool = messages.mid;
-      else pool = messages.high;
+      pool = messages.high;
     }
     if (!pool || pool.length === 0) return;
     msg = pool[Math.floor(Math.random() * pool.length)];
@@ -424,39 +585,40 @@ function triggerSpeechInternal(customMessage) {
   speechText.innerHTML = msg.replace(/\n/g, '<br>');
   speechBubble.style.display = 'block';
   state.speechVisible = true;
+  syncAnimation();
 }
 
-function dismissSpeech() {
+function dismissSpeech(emitCallback) {
   speechBubble.style.display = 'none';
   state.speechVisible = false;
   state.lastSpeechTrigger = Date.now();
-  callbacks.speechDismiss.forEach(cb => cb());
+  syncAnimation();
+  if (emitCallback) callbacks.speechDismiss.forEach(cb => cb());
 }
 
 function acceptSpeech() {
   speechBubble.style.display = 'none';
   state.speechVisible = false;
   state.lastSpeechTrigger = Date.now();
-  // 触发正反馈：眯眼笑 + 爱心飘散（仅在非 blind 状态）
-  if (state.cameraStatus !== 'blind') {
-    state.happyTimer = 60;
-    state.heartAnimActive = true;
-    state.heartAnimFrame = 0;
+  state.playbackSpeed = 1;
+  if (state.cameraStatus === 'ok') {
+    playOnce('jumping', moodAnimation());
+  } else {
+    syncAnimation();
   }
   callbacks.speechAccept.forEach(cb => cb());
 }
 
-document.getElementById('speech-dismiss-btn').addEventListener('click', dismissSpeech);
+document.getElementById('speech-dismiss-btn').addEventListener('click', () => dismissSpeech(true));
 document.getElementById('speech-accept-btn').addEventListener('click', acceptSpeech);
 
-// ---------- 设置菜单 ----------
-document.getElementById('settings-btn').addEventListener('click', (e) => {
-  e.stopPropagation();
+document.getElementById('settings-btn').addEventListener('click', (event) => {
+  event.stopPropagation();
   settingsMenu.style.display = settingsMenu.style.display === 'none' ? 'block' : 'none';
 });
 
-document.addEventListener('click', (e) => {
-  if (!settingsMenu.contains(e.target) && e.target.id !== 'settings-btn') {
+document.addEventListener('click', (event) => {
+  if (!settingsMenu.contains(event.target) && event.target.id !== 'settings-btn') {
     settingsMenu.style.display = 'none';
   }
 });
@@ -465,9 +627,6 @@ document.getElementById('open-monitor-btn').addEventListener('click', () => {
   callbacks.openMonitor.forEach(cb => cb());
   settingsMenu.style.display = 'none';
 });
-
-const cameraToggleBtn = document.getElementById('camera-toggle-btn');
-const cameraToggleLabel = document.getElementById('camera-toggle-label');
 
 function applyCameraEnabled(enabled) {
   state.cameraEnabled = !!enabled;
@@ -485,238 +644,141 @@ cameraToggleBtn.addEventListener('click', () => {
   settingsMenu.style.display = 'none';
 });
 
-const animalScale = document.getElementById('animal-scale');
-const uiScale = document.getElementById('ui-scale');
-
-function applyAnimalScale(v) {
-  petSvg.style.transform = `scale(${v})`;
-  petSvg.style.transformOrigin = '180px 206px';
-  document.getElementById('animal-scale-val').textContent = v.toFixed(1) + '×';
+function applyAnimalScale(value) {
+  const v = clamp(value, 0.5, 1.5);
+  document.documentElement.style.setProperty('--animal-scale', String(v * BASE_ANIMAL_SCALE));
+  document.getElementById('animal-scale-val').textContent = v.toFixed(1) + 'x';
   animalScale.value = v;
 }
 
-function applyUIScale(v) {
-  uiElements.style.transform = `translateX(-50%) scale(${v})`;
-  uiElements.style.transformOrigin = 'center top';
-  document.getElementById('ui-scale-val').textContent = v.toFixed(1) + '×';
+function applyUIScale(value) {
+  const v = clamp(value, 0.5, 1.5);
+  document.documentElement.style.setProperty('--ui-scale', String(v));
+  document.getElementById('ui-scale-val').textContent = v.toFixed(1) + 'x';
   uiScale.value = v;
 }
 
+applyAnimalScale(DEFAULT_ANIMAL_SCALE);
+applyUIScale(DEFAULT_UI_SCALE);
+
 animalScale.addEventListener('input', () => {
-  const v = parseFloat(animalScale.value);
-  applyAnimalScale(v);
-  callbacks.animalScaleChange.forEach(cb => cb(v));
+  const value = parseFloat(animalScale.value);
+  applyAnimalScale(value);
+  callbacks.animalScaleChange.forEach(cb => cb(value));
 });
 
 uiScale.addEventListener('input', () => {
-  const v = parseFloat(uiScale.value);
-  applyUIScale(v);
-  callbacks.uiScaleChange.forEach(cb => cb(v));
+  const value = parseFloat(uiScale.value);
+  applyUIScale(value);
+  callbacks.uiScaleChange.forEach(cb => cb(value));
 });
 
-// ---------- 浣熊点击 ----------
-petSvg.addEventListener('click', (e) => {
-  // 仅在摄像头可用状态下触发
-  if (state.cameraStatus !== 'ok') return;
-  callbacks.petClick.forEach(cb => cb());
-});
+function isPetPixelSolid(event) {
+  const rect = canvas.getBoundingClientRect();
+  if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) {
+    return false;
+  }
+  const x = Math.floor((event.clientX - rect.left) * (canvas.width / rect.width));
+  const y = Math.floor((event.clientY - rect.top) * (canvas.height / rect.height));
+  try {
+    return ctx.getImageData(x, y, 1, 1).data[3] > 20;
+  } catch (error) {
+    return true;
+  }
+}
 
-// ---------- 主渲染循环 ----------
-function updateScene() {
-  // ===== 摄像头 blind/off 状态 =====
-  if (state.cameraStatus === 'blind' || state.cameraStatus === 'off') {
-    const sway = Math.sin(state.frame * 0.05) * 8;
-    raccoonConfused.setAttribute('transform', `translate(${sway}, ${Math.sin(state.frame * 0.04) * 2})`);
-    const qm = document.getElementById('question-mark');
-    if (qm) qm.style.opacity = (Math.sin(state.frame * 0.08) + 1) / 2;
-    stressNum.textContent = state.cameraStatus === 'off' ? 'OFF' : '---';
-    stressNum.style.color = state.cameraStatus === 'off' ? '#FFB870' : '#888';
+function isInteractiveTarget(event) {
+  const target = document.elementFromPoint(event.clientX, event.clientY);
+  return !!(target && target.closest && (
+    target.closest('#ui-elements') ||
+    target.closest('#speech-bubble') ||
+    target.closest('#settings-menu')
+  ));
+}
 
-    if (state.cameraStatus === 'off') {
-      return;
-    }
-
-    if (state.blindTriggerTimer > 0) {
-      state.blindTriggerTimer--;
-      if (state.blindTriggerTimer === 0 && !state.speechVisible && state.autoSpeechEnabled) {
-        triggerSpeechInternal();
-      }
-    }
-    if (state.autoSpeechEnabled && !state.speechVisible && Date.now() - state.lastSpeechTrigger > 15000) {
-      triggerSpeechInternal();
-    }
+function updateMousePassthrough(event) {
+  if (!window.electronAPI) return;
+  if (state.dragging) {
+    window.electronAPI.setIgnoreMouseEvents(false);
     return;
   }
+  window.electronAPI.setIgnoreMouseEvents(!(isInteractiveTarget(event) || isPetPixelSolid(event)));
+}
 
-  const stress = state.stress;
-  const mood = getMood(stress);
+function handlePetClick() {
+  if (state.cameraStatus !== 'ok') return;
+  callbacks.petClick.forEach(cb => cb());
+  playOnce('jumping', moodAnimation());
+}
 
-  // ===== 数值显示 =====
-  stressNum.textContent = String(stress).padStart(3, '0');
-  let valueColor;
-  if (stress < 33) valueColor = '#A8D88C';
-  else if (stress < 66) valueColor = '#FFE898';
-  else if (stress < 85) valueColor = '#FFB870';
-  else valueColor = '#FF8888';
-  stressNum.style.color = valueColor;
+function handlePointerMove(event) {
+  updateMousePassthrough(event);
+  if (!state.dragging || !window.electronAPI) return;
+  event.stopPropagation();
 
-  // ===== 浣熊主体动画 =====
-  let bodyTransform = '';
-  if (mood === 0) {
-    const breathe = Math.sin(state.frame * 0.04) * 1.5;
-    bodyTransform = `translate(0, ${breathe})`;
-  } else if (mood === 1) {
-    const breathe = Math.sin(state.frame * 0.05) * 1.5;
-    const subtleSway = Math.sin(state.frame * 0.02) * 1;
-    bodyTransform = `translate(${subtleSway}, ${breathe})`;
-  } else if (mood === 2) {
-    const breathe = Math.sin(state.frame * 0.08) * 2;
-    const shake = Math.sin(state.frame * 0.4) * 0.8;
-    bodyTransform = `translate(${shake}, ${breathe})`;
+  const dx = event.screenX - state.dragStartX;
+  const dy = event.screenY - state.dragStartY;
+  state.dragStartX = event.screenX;
+  state.dragStartY = event.screenY;
+  state.lastMoveX = dx;
+  state.lastMoveY = dy;
+  state.dragDistance += Math.hypot(dx, dy);
+  window.electronAPI.moveWindow(dx, dy);
+
+  const speed = Math.hypot(dx, dy);
+  state.playbackSpeed = clamp(speed / 8, 0.85, 1.8);
+  if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 0.5) {
+    play(dx > 0 ? 'running-right' : 'running-left');
   } else {
-    const shake = Math.sin(state.frame * 0.6) * 2;
-    const shakeY = Math.cos(state.frame * 0.5) * 1.5;
-    bodyTransform = `translate(${shake}, ${shakeY})`;
-  }
-  raccoonBody.setAttribute('transform', bodyTransform);
-
-  // ===== 正反馈：眯眼笑 =====
-  if (state.happyTimer > 0) {
-    leftEyeNormal.style.display = 'none';
-    rightEyeNormal.style.display = 'none';
-    happyEyes.style.display = 'block';
-    state.happyTimer--;
-  } else {
-    leftEyeNormal.style.display = 'block';
-    rightEyeNormal.style.display = 'block';
-    happyEyes.style.display = 'none';
-  }
-
-  // ===== 瞳孔 =====
-  const pupilSize = Math.max(1.5, 3 - (stress / 100) * 1.5);
-  leftPupil.setAttribute('r', pupilSize);
-  rightPupil.setAttribute('r', pupilSize);
-
-  // ===== 眨眼 =====
-  if (state.happyTimer === 0) {
-    const blinkFreq = mood >= 2 ? 60 : 200;
-    const blinkDur = mood >= 2 ? 5 : 8;
-    const blinking = state.frame % blinkFreq < blinkDur;
-    leftPupil.style.opacity = blinking ? '0' : '1';
-    rightPupil.style.opacity = blinking ? '0' : '1';
-    leftShine.style.opacity = blinking ? '0' : '1';
-    rightShine.style.opacity = blinking ? '0' : '1';
-  }
-
-  // ===== 嘴巴 =====
-  if (state.happyTimer > 0) {
-    mouthPath.setAttribute('d', 'M 180 187 Q 175 192 170 188');
-  } else if (mood === 0) {
-    mouthPath.setAttribute('d', 'M 180 187 Q 175 191 171 188');
-  } else if (mood === 1) {
-    mouthPath.setAttribute('d', 'M 180 188 Q 175 189 172 188');
-  } else if (mood === 2) {
-    mouthPath.setAttribute('d', 'M 180 188 Q 175 187 171 189');
-  } else {
-    mouthPath.setAttribute('d', 'M 180 189 Q 175 186 171 190');
-  }
-
-  // ===== 黄牌/红牌 =====
-  if (mood === 2) {
-    cardArmGroup.style.display = 'block';
-    warningCard.setAttribute('fill', '#FFD43B');
-    cardText.textContent = '!';
-    cardText.setAttribute('fill', '#1a1a1a');
-    const shake = Math.sin(state.frame * 0.3) * 0.5;
-    cardArmGroup.setAttribute('transform', `translate(${shake}, 0)`);
-  } else if (mood === 3) {
-    cardArmGroup.style.display = 'block';
-    warningCard.setAttribute('fill', '#E24B4A');
-    cardText.textContent = '!';
-    cardText.setAttribute('fill', '#FAFAFA');
-    const shake = Math.sin(state.frame * 0.5) * 1.5;
-    const shakeY = Math.sin(state.frame * 0.4) * 0.8;
-    cardArmGroup.setAttribute('transform', `translate(${shake}, ${shakeY})`);
-  } else {
-    cardArmGroup.style.display = 'none';
-  }
-
-  // ===== 冒汗 =====
-  if (mood >= 1 && mood <= 2) {
-    sweatDrops.style.display = 'block';
-    const dropOffset = (state.frame % 60) * 0.3;
-    document.getElementById('sweat1').setAttribute('cy', 158 + dropOffset);
-    document.getElementById('sweat1').style.opacity = Math.max(0, 1 - (state.frame % 60) / 60);
-    document.getElementById('sweat2').setAttribute('cy', 160 + dropOffset);
-    document.getElementById('sweat2').style.opacity = Math.max(0, 1 - (state.frame % 60) / 60);
-  } else {
-    sweatDrops.style.display = 'none';
-  }
-
-  // ===== 正反馈：爱心飘散 =====
-  if (state.heartAnimActive) {
-    feedbackHearts.style.display = 'block';
-    state.heartAnimFrame++;
-    const total = 90;
-    const t = state.heartAnimFrame / total;
-    if (t >= 1) {
-      state.heartAnimActive = false;
-      feedbackHearts.style.display = 'none';
-    } else {
-      const opacity = 1 - t;
-      const yOffset = -t * 50;
-      document.getElementById('heart1').setAttribute('transform', `translate(0, ${yOffset}) scale(${1 + t * 0.3})`);
-      document.getElementById('heart1').style.opacity = opacity;
-      document.getElementById('heart2').setAttribute('transform', `translate(${-t * 12}, ${yOffset * 0.8 - 5}) scale(${0.7 + t * 0.2})`);
-      document.getElementById('heart2').style.opacity = opacity;
-      document.getElementById('heart3').setAttribute('transform', `translate(${t * 12}, ${yOffset * 0.8 - 5}) scale(${0.7 + t * 0.2})`);
-      document.getElementById('heart3').style.opacity = opacity;
-    }
-  } else {
-    feedbackHearts.style.display = 'none';
-  }
-
-  // ===== 自动触发说话 =====
-  if (state.autoSpeechEnabled
-      && stress >= 65
-      && !state.speechVisible
-      && Date.now() - state.lastSpeechTrigger > 8000) {
-    triggerSpeechInternal();
+    play('running');
   }
 }
 
-function loop() {
-  state.frame++;
-  updateScene();
-  requestAnimationFrame(loop);
-}
+petContainer.addEventListener('mousemove', handlePointerMove);
+window.addEventListener('mousemove', handlePointerMove);
 
-loop();
+petContainer.addEventListener('mousedown', (event) => {
+  if (event.button !== 0 || isInteractiveTarget(event) || !isPetPixelSolid(event)) return;
+  state.dragging = true;
+  state.dragStartX = event.screenX;
+  state.dragStartY = event.screenY;
+  state.dragDistance = 0;
+  state.playbackSpeed = 1.1;
+  play('running', { restart: true });
+  if (window.electronAPI) window.electronAPI.setIgnoreMouseEvents(false);
+});
 
-// ---------- 公开 API ----------
+window.addEventListener('mouseup', () => {
+  if (!state.dragging) return;
+  state.dragging = false;
+  const wasClick = state.dragDistance < 4;
+  state.playbackSpeed = 1;
+  if (wasClick) {
+    handlePetClick();
+  } else {
+    playOnce('jumping', moodAnimation());
+  }
+});
+
 window.PetWidget = {
   setStress(value) {
-    state.stress = Math.max(0, Math.min(100, Number(value) || 0));
+    state.stress = clamp(Number(value) || 0, 0, 100);
+    syncAnimation();
+  },
+
+  setCalibration(calibration) {
+    updateCalibration(calibration);
+    syncAnimation();
   },
 
   setCameraStatus(status) {
     if (status !== 'ok' && status !== 'blind' && status !== 'off') return;
     if (state.cameraStatus === status) return;
-    applyCameraEnabled(status !== 'off');
     state.cameraStatus = status;
-    if (status === 'blind' || status === 'off') {
-      raccoonNormal.style.display = 'none';
-      raccoonConfused.style.display = 'block';
-      stressNum.textContent = status === 'off' ? 'OFF' : '---';
-      stressNum.style.color = status === 'off' ? '#FFB870' : '#888';
-      state.blindTriggerTimer = status === 'blind' ? 120 : 0; // 2 秒后说话
-      if (state.speechVisible) dismissSpeech();
-    } else {
-      raccoonNormal.style.display = 'block';
-      raccoonConfused.style.display = 'none';
-      state.blindTriggerTimer = 0;
-      if (state.speechVisible) dismissSpeech();
-    }
+    applyCameraEnabled(status !== 'off');
+    state.blindTriggerTimer = status === 'blind' ? 120 : 0;
+    if (state.speechVisible) dismissSpeech(false);
+    syncAnimation();
   },
 
   triggerSpeech(message) {
@@ -724,7 +786,7 @@ window.PetWidget = {
   },
 
   dismissSpeech() {
-    if (state.speechVisible) dismissSpeech();
+    if (state.speechVisible) dismissSpeech(true);
   },
 
   setMessages(newMessages) {
@@ -747,17 +809,18 @@ window.PetWidget = {
     applyCameraEnabled(!!enabled);
     if (!enabled) {
       window.PetWidget.setCameraStatus('off');
+    } else if (state.cameraStatus === 'off') {
+      state.cameraStatus = 'ok';
+      syncAnimation();
     }
   },
 
   setAnimalScale(value) {
-    const v = Math.max(0.5, Math.min(1.5, Number(value) || 1));
-    applyAnimalScale(v);
+    applyAnimalScale(Number(value) || 1);
   },
 
   setUIScale(value) {
-    const v = Math.max(0.5, Math.min(1.5, Number(value) || 1));
-    applyUIScale(v);
+    applyUIScale(Number(value) || 1);
   },
 
   onPetClick(cb) { if (typeof cb === 'function') callbacks.petClick.push(cb); },
@@ -773,18 +836,27 @@ window.PetWidget = {
   }
 };
 
+spritesheet.onload = () => {
+  drawFrame();
+  requestAnimationFrame(tick);
+};
+
+spritesheet.onerror = () => {
+  stressNum.textContent = 'ERR';
+  stressNum.style.color = '#FF8888';
+};
+
+spritesheet.src = SPRITESHEET_SRC;
 })();
 </script>
 
-<!-- Electron 桥接（非 Electron 环境下自动跳过） -->
 <script>
 if (window.electronAPI) {
-  // 接收压力数据
   window.electronAPI.onStressUpdate((data) => {
     window.PetWidget.setStress(data.stress_score || 0);
+    window.PetWidget.setCalibration(data.calibration || { state: 'ready', progress: 1 });
   });
 
-  // 接收摄像头状态
   window.electronAPI.onCameraStatus((status) => {
     window.PetWidget.setCameraStatus(status);
   });
@@ -793,20 +865,16 @@ if (window.electronAPI) {
     window.PetWidget.setCameraEnabled(enabled);
   });
 
-  // 关闭自动说话 — Electron 主进程控制提醒时机
   window.PetWidget.setAutoSpeech(false);
 
-  // 气泡"好的"按钮 → 通知主进程（进入冷却）
   window.PetWidget.onSpeechAccept(() => {
     window.electronAPI.speechAccepted();
   });
 
-  // 气泡 ✕ 按钮 → 通知主进程（进入冷却）
   window.PetWidget.onSpeechDismiss(() => {
     window.electronAPI.speechDismissed();
   });
 
-  // 设置菜单"打开 Monitor" → 通知主进程
   window.PetWidget.onOpenMonitor(() => {
     window.electronAPI.launchMonitor();
   });
@@ -814,50 +882,13 @@ if (window.electronAPI) {
   window.PetWidget.onCameraToggle((enabled) => {
     window.electronAPI.setCameraEnabled(enabled);
   });
-
-  // 鼠标穿透：实体元素上关闭穿透，透明区域开启穿透
-  const petContainer = document.getElementById('pet-container');
-  petContainer.addEventListener('mousemove', (e) => {
-    const target = document.elementFromPoint(e.clientX, e.clientY);
-    const onSolid = target && target.closest && (
-      target.closest('#pet-svg') ||
-      target.closest('#ui-elements') ||
-      target.closest('#speech-bubble') ||
-      target.closest('#settings-menu')
-    );
-    window.electronAPI.setIgnoreMouseEvents(!onSolid);
-
-    // 拖拽移动窗口
-    if (isDragging) {
-      const dx = e.screenX - dragStartX;
-      const dy = e.screenY - dragStartY;
-      dragStartX = e.screenX;
-      dragStartY = e.screenY;
-      window.electronAPI.moveWindow(dx, dy);
-    }
-  });
-
-  // 拖拽支持：在井盖/浣熊区域按住拖动
-  let isDragging = false;
-  let dragStartX = 0;
-  let dragStartY = 0;
-
-  petContainer.addEventListener('mousedown', (e) => {
-    const target = document.elementFromPoint(e.clientX, e.clientY);
-    const onDraggable = target && target.closest && (
-      target.closest('#manhole') || target.closest('#raccoon')
-    );
-    if (onDraggable) {
-      isDragging = true;
-      dragStartX = e.screenX;
-      dragStartY = e.screenY;
-      window.electronAPI.setIgnoreMouseEvents(false);
-    }
-  });
-
-  window.addEventListener('mouseup', () => {
-    isDragging = false;
-  });
+} else {
+  const previewParams = new URLSearchParams(window.location.search);
+  const previewCamera = previewParams.get('camera') || 'ok';
+  const previewStress = previewParams.has('stress') ? previewParams.get('stress') : 50;
+  window.PetWidget.setCalibration({ state: 'ready', progress: 1 });
+  window.PetWidget.setCameraStatus(previewCamera);
+  window.PetWidget.setStress(previewStress);
 }
 </script>
 

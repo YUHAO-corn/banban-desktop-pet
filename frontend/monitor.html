@@ -302,6 +302,7 @@
       <div class="status-row"><span>摄像头</span><span class="status-value" id="camera-status">启动中</span></div>
       <div class="status-row"><span>后端</span><span class="status-value" id="backend-status">启动中</span></div>
       <div class="status-row"><span>人脸</span><span class="status-value" id="face-status">等待</span></div>
+      <div class="status-row"><span>校准</span><span class="status-value" id="calibration-status">等待</span></div>
       <div class="status-row"><span>提醒状态</span><span class="status-value" id="alert-status">idle</span></div>
     </div>
 
@@ -340,6 +341,7 @@ const meterEl = document.getElementById('stress-meter');
 const cameraStatusEl = document.getElementById('camera-status');
 const backendStatusEl = document.getElementById('backend-status');
 const faceStatusEl = document.getElementById('face-status');
+const calibrationStatusEl = document.getElementById('calibration-status');
 const alertStatusEl = document.getElementById('alert-status');
 const sampleTimeEl = document.getElementById('sample-time');
 const summaryLineEl = document.getElementById('summary-line');
@@ -362,12 +364,31 @@ function setCameraEnabled(enabled) {
   cameraToggleBtn.classList.toggle('is-off', !cameraEnabled);
 }
 
+function formatBackendStatus(status) {
+  if (status === 'starting') return '启动中';
+  if (status === 'running') return '运行中';
+  if (status === 'stopped') return '已停止';
+  if (status === 'off') return '已关闭';
+  if (status === 'error') return '启动失败';
+  return status || 'unknown';
+}
+
 function renderStress(data) {
   const score = Number(data && data.stress_score) || 0;
+  const calibration = data && data.calibration ? data.calibration : null;
+  const calibrationState = calibration && calibration.state
+    ? calibration.state
+    : (data ? 'ready' : 'waiting');
   const color = scoreColor(score);
-  scoreEl.textContent = cameraEnabled ? String(score).padStart(2, '0') : '--';
+  scoreEl.textContent = cameraEnabled
+    ? (calibrationState === 'ready' ? String(score).padStart(2, '0') : 'CAL')
+    : '--';
   scoreEl.style.color = color;
-  meterEl.style.width = cameraEnabled ? `${Math.max(0, Math.min(100, score))}%` : '0%';
+  meterEl.style.width = cameraEnabled
+    ? (calibrationState === 'ready'
+      ? `${Math.max(0, Math.min(100, score))}%`
+      : `${Math.round((Number(calibration && calibration.progress) || 0) * 100)}%`)
+    : '0%';
   meterEl.style.background = color;
 
   const signals = (data && data.signals) || {};
@@ -378,9 +399,18 @@ function renderStress(data) {
   });
 
   faceStatusEl.textContent = data && data.face_detected ? '检测到' : '未检测';
+  if (calibrationState === 'calibrating') {
+    calibrationStatusEl.textContent = `校准中 ${Math.round((Number(calibration.progress) || 0) * 100)}%`;
+  } else if (calibrationState === 'waiting') {
+    calibrationStatusEl.textContent = '等待人脸';
+  } else {
+    calibrationStatusEl.textContent = '已完成';
+  }
   sampleTimeEl.textContent = data && data.timestamp ? data.timestamp : '--';
   summaryLineEl.textContent = cameraEnabled
-    ? (data && data.face_detected ? `压力值 ${score}` : '等待人脸进入画面')
+    ? (calibrationState !== 'ready'
+      ? '请保持自然放松，正在建立个人基线'
+      : (data && data.face_detected ? `压力值 ${score}` : '等待人脸进入画面'))
     : '摄像头已手动关闭';
 }
 
@@ -389,7 +419,7 @@ function renderMonitorState(state) {
   cameraStatusEl.textContent = state.cameraStatus === 'off'
     ? '已关闭'
     : state.cameraStatus === 'blind' ? '不可见' : '正常';
-  backendStatusEl.textContent = state.backendStatus || 'unknown';
+  backendStatusEl.textContent = formatBackendStatus(state.backendStatus);
   alertStatusEl.textContent = state.alert && state.alert.state ? state.alert.state : 'idle';
   if (state.previewUrl && state.cameraEnabled) {
     previewImg.src = state.previewUrl;
@@ -400,7 +430,9 @@ function renderMonitorState(state) {
     previewImg.style.display = 'none';
     previewEmpty.style.display = 'block';
     previewEmpty.textContent = state.cameraEnabled
-      ? '等待摄像头画面。检测到人脸后，这里会显示马赛克背景 + 人脸区域预览。'
+      ? (state.backendStatus === 'error'
+        ? '摄像头没有成功启动。检查权限、设备连接，或手动重启摄像头。'
+        : '等待摄像头画面。检测到人脸后，这里会显示马赛克背景 + 人脸区域预览。')
       : '摄像头已关闭。';
   }
   renderStress(state.stress);

@@ -25,6 +25,8 @@ STRESS_THRESHOLD = 60
 COOLDOWN_SECONDS = 120
 CONSECUTIVE_REQUIRED = 3
 CAPTURE_INTERVAL = 3
+CALIBRATION_SECONDS = 12
+MIN_CALIBRATION_SAMPLES = 3
 WINDOW_NAME = "Emotion Watch"
 PANEL_W = 300
 CAM_W = 400
@@ -160,7 +162,29 @@ def get_bs(blendshapes, name):
     return 0.0
 
 
-def compute_stress(blendshapes):
+SIGNAL_DEADBANDS = {
+    "brow_furrow": 0.03,
+    "lip_press": 0.02,
+    "eye_squint": 0.03,
+    "expression_freeze": 0.04,
+}
+
+SIGNAL_RANGES = {
+    "brow_furrow": 0.14,
+    "lip_press": 0.10,
+    "eye_squint": 0.14,
+    "expression_freeze": 0.14,
+}
+
+SIGNAL_WEIGHTS = {
+    "brow_furrow": 0.35,
+    "lip_press": 0.30,
+    "eye_squint": 0.20,
+    "expression_freeze": 0.15,
+}
+
+
+def extract_signals(blendshapes):
     build_blendshape_map(blendshapes)
 
     brow_down_l = get_bs(blendshapes, "browDownLeft")
@@ -177,47 +201,74 @@ def compute_stress(blendshapes):
     nose_sneer_l = get_bs(blendshapes, "noseSneerLeft")
     nose_sneer_r = get_bs(blendshapes, "noseSneerRight")
 
-    # Brow tension: combine down + inner up (both indicate concentration/stress)
+    # Keep calibration features unclamped and close to MediaPipe's original
+    # scale. Amplifying before calibration can saturate a neutral face and
+    # remove the headroom needed to detect later changes.
     brow_raw = max((brow_down_l + brow_down_r) / 2.0, brow_inner_up * 0.8)
-    brow_furrow = min(1.0, brow_raw * 3.0)
-
-    # Lip/jaw tension: press + stretch + clench
     lip_raw = (mouth_press_l + mouth_press_r) / 2.0
     stretch_raw = (mouth_stretch_l + mouth_stretch_r) / 2.0
-    lip_press = min(1.0, (lip_raw + stretch_raw * 0.5 + jaw_clench_val * 0.5) * 3.0)
-
-    # Eye tension: squint + nose sneer (often co-occur with stress)
+    lip_tension = lip_raw + stretch_raw * 0.5 + jaw_clench_val * 0.5
     eye_raw = (eye_squint_l + eye_squint_r) / 2.0
     sneer_raw = (nose_sneer_l + nose_sneer_r) / 2.0
-    eye_squint = min(1.0, (eye_raw + sneer_raw * 0.3) * 2.0)
+    eye_tension = eye_raw + sneer_raw * 0.3
 
-    # Expression freeze: low variance across all signals = face locked up
     jaw_shut = max(0, 1.0 - jaw_open * 10) if jaw_open < 0.05 else 0.0
-    all_signals = [brow_furrow, lip_press, eye_squint]
-    avg_tension = sum(all_signals) / len(all_signals)
-    expression_freeze = min(1.0, jaw_shut * 0.4 + avg_tension * 0.6)
-
-    # Weighted average
-    weighted = 0.35 * brow_furrow + 0.25 * lip_press + 0.20 * eye_squint + 0.20 * expression_freeze
-
-    # Floor: if any single signal is very high, stress should reflect that
-    max_signal = max(brow_furrow, lip_press, eye_squint, expression_freeze)
-    floor = max_signal * 0.65
-
-    stress_score = int(100 * max(weighted, floor))
-    stress_score = min(100, max(0, stress_score))
+    avg_tension = (brow_raw + lip_tension + eye_tension) / 3.0
+    expression_freeze = jaw_shut * 0.2 + avg_tension * 0.8
 
     signals = {
-        "brow_furrow": round(brow_furrow, 2),
-        "lip_press": round(lip_press, 2),
-        "eye_squint": round(eye_squint, 2),
-        "expression_freeze": round(expression_freeze, 2),
+        "brow_furrow": round(min(1.0, brow_raw), 3),
+        "lip_press": round(min(1.0, lip_tension), 3),
+        "eye_squint": round(min(1.0, eye_tension), 3),
+        "expression_freeze": round(min(1.0, expression_freeze), 3),
     }
+    return signals
+
+
+def dominant_signal(signals):
     dominant = max(signals, key=signals.get)
     if signals[dominant] < 0.3:
         dominant = "none"
+    return dominant
 
-    return stress_score, signals, dominant
+
+def average_signal_samples(samples):
+    if not samples:
+        return dict(ZEROED_SIGNALS)
+    return {
+        key: round(sum(sample.get(key, 0.0) for sample in samples) / len(samples), 2)
+        for key in ZEROED_SIGNALS
+    }
+
+
+def compute_stress(signals, baseline=None):
+    if baseline:
+        adjusted = {}
+        for key, raw in signals.items():
+            delta = max(0.0, raw - baseline.get(key, 0.0) - SIGNAL_DEADBANDS[key])
+            normalized = min(1.0, delta / SIGNAL_RANGES[key])
+            adjusted[key] = normalized ** 0.65
+
+        active_count = sum(1 for value in adjusted.values() if value >= 0.25)
+        weighted = sum(SIGNAL_WEIGHTS[key] * adjusted[key] for key in SIGNAL_WEIGHTS)
+        max_signal = max(adjusted.values())
+
+        if active_count <= 1:
+            score_raw = max(weighted, max_signal * 0.60)
+        else:
+            score_raw = max(weighted * 1.15, max_signal * 0.85)
+
+        stress_score = int(100 * min(1.0, score_raw))
+        return min(100, max(0, stress_score)), {
+            key: round(value, 2) for key, value in adjusted.items()
+        }, dominant_signal(adjusted)
+
+    weighted = sum(SIGNAL_WEIGHTS[key] * signals[key] for key in SIGNAL_WEIGHTS)
+    max_signal = max(signals.values())
+    stress_score = int(100 * max(weighted, max_signal * 0.45))
+    stress_score = min(100, max(0, stress_score))
+
+    return stress_score, signals, dominant_signal(signals)
 
 
 def mosaic_with_face_reveal(frame, landmarks, padding=0.3, mosaic_factor=20):
@@ -408,13 +459,28 @@ def clear_preview():
         pass
 
 
-def write_stress_data(stress_score, signals, face_detected, camera_blocked):
+def write_stress_data(
+    stress_score,
+    signals,
+    face_detected,
+    camera_blocked,
+    calibration_state="ready",
+    calibration_progress=1.0,
+    baseline=None,
+    raw_signals=None,
+):
     data = {
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         "stress_score": stress_score,
         "signals": signals,
         "face_detected": face_detected,
         "camera_blocked": camera_blocked,
+        "calibration": {
+            "state": calibration_state,
+            "progress": round(calibration_progress, 2),
+            "baseline": baseline,
+            "raw_signals": raw_signals,
+        },
     }
     with open(STRESS_JSON_PATH, "w") as f:
         json.dump(data, f, indent=2)
@@ -458,6 +524,8 @@ def main():
     cap = cv2.VideoCapture(cam_idx, camera_backend())
     if not cap.isOpened():
         print("ERROR: Cannot open camera")
+        clear_preview()
+        write_stress_data(0, dict(ZEROED_SIGNALS), False, True, calibration_state="waiting")
         return
 
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
@@ -474,10 +542,16 @@ def main():
     last_has_face = False
     last_stress = 0
     face_crop = None
+    calibration_start = time.time()
+    calibration_samples = []
+    baseline_signals = None
 
     if not headless:
         cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_AUTOSIZE)
-    print(f"Emotion Watch started{' (headless)' if headless else ''}. Press Ctrl+C to quit.")
+    print(
+        f"Emotion Watch started{' (headless)' if headless else ''}. "
+        f"Hold a relaxed, neutral face for {CALIBRATION_SECONDS}s. Press Ctrl+C to quit."
+    )
 
     while True:
         ret, frame = cap.read()
@@ -498,7 +572,14 @@ def main():
                 consecutive = 0
                 face_crop = None
                 clear_preview()
-                write_stress_data(0, dict(ZEROED_SIGNALS), False, True)
+                write_stress_data(
+                    0,
+                    dict(ZEROED_SIGNALS),
+                    False,
+                    True,
+                    calibration_state="waiting" if baseline_signals is None else "ready",
+                    baseline=baseline_signals,
+                )
             else:
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 mp_image = Image(image_format=ImageFormat.SRGB, data=rgb)
@@ -507,7 +588,41 @@ def main():
                 if result.face_blendshapes and len(result.face_blendshapes) > 0:
                     last_has_face = True
                     blendshapes = result.face_blendshapes[0]
-                    stress_score, signals, dominant = compute_stress(blendshapes)
+                    raw_signals = extract_signals(blendshapes)
+
+                    if baseline_signals is None:
+                        calibration_samples.append(raw_signals)
+                        elapsed = now - calibration_start
+                        progress = min(1.0, elapsed / CALIBRATION_SECONDS)
+                        if elapsed >= CALIBRATION_SECONDS and len(calibration_samples) >= MIN_CALIBRATION_SAMPLES:
+                            baseline_signals = average_signal_samples(calibration_samples)
+                            print(f"Calibration baseline: {json.dumps(baseline_signals)}")
+                        else:
+                            remaining = max(0, int(CALIBRATION_SECONDS - elapsed))
+                            last_stress = 0
+                            last_signals = dict(ZEROED_SIGNALS)
+                            last_dominant = "none"
+                            stress_history.clear()
+                            consecutive = 0
+
+                            if result.face_landmarks and len(result.face_landmarks) > 0:
+                                face_crop = mosaic_with_face_reveal(frame, result.face_landmarks[0])
+                                write_preview(face_crop)
+
+                            write_stress_data(
+                                0,
+                                dict(ZEROED_SIGNALS),
+                                True,
+                                False,
+                                calibration_state="calibrating",
+                                calibration_progress=progress,
+                                baseline=None,
+                                raw_signals=raw_signals,
+                            )
+                            print(f"Calibrating neutral face: {remaining}s remaining")
+                            continue
+
+                    stress_score, signals, dominant = compute_stress(raw_signals, baseline_signals)
                     last_stress = stress_score
                     last_signals = signals
                     last_dominant = dominant
@@ -521,7 +636,16 @@ def main():
                     avg_stress = int(sum(stress_history) / len(stress_history))
                     cooldown_remaining = max(0, int(COOLDOWN_SECONDS - (now - last_alert_time)))
 
-                    write_stress_data(stress_score, signals, True, False)
+                    write_stress_data(
+                        stress_score,
+                        signals,
+                        True,
+                        False,
+                        calibration_state="ready",
+                        calibration_progress=1.0,
+                        baseline=baseline_signals,
+                        raw_signals=raw_signals,
+                    )
 
                     if avg_stress >= STRESS_THRESHOLD and cooldown_remaining == 0:
                         consecutive += 1
@@ -540,7 +664,17 @@ def main():
                     consecutive = 0
                     face_crop = None
                     clear_preview()
-                    write_stress_data(0, dict(ZEROED_SIGNALS), False, False)
+                    if baseline_signals is None:
+                        calibration_start = now
+                        calibration_samples.clear()
+                    write_stress_data(
+                        0,
+                        dict(ZEROED_SIGNALS),
+                        False,
+                        False,
+                        calibration_state="waiting" if baseline_signals is None else "ready",
+                        baseline=baseline_signals,
+                    )
 
         if now > message_display_until:
             current_message = None

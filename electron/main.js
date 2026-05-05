@@ -8,9 +8,10 @@ const { pathToFileURL } = require('url');
 const STRESS_JSON = '/tmp/banban_stress.json';
 const PREVIEW_IMAGE = '/tmp/banban_preview.jpg';
 const POLL_INTERVAL = 3000;        // 3s sampling interval
-const STRESS_THRESHOLD = 60;
-const FIRST_TRIGGER_WINDOW = 15000;  // 15s window for first alert
-const NORMAL_TRIGGER_WINDOW = 30000; // 30s window for subsequent alerts
+const WARNING_THRESHOLD = 65;       // Pet enters yellow-card state
+const CRITICAL_THRESHOLD = 85;      // Pet enters red-card state
+const WARNING_TRIGGER_WINDOW = 9000; // ~3 samples before speaking
+const CRITICAL_TRIGGER_WINDOW = 6000; // ~2 samples before speaking
 const TRIGGER_RATIO = 0.7;          // 70% of samples must exceed threshold
 const ALERT_TIMEOUT = 60000;         // 1min auto-dismiss
 const COOLDOWN_DURATION = 300000;    // 5min cooldown after alert
@@ -24,6 +25,7 @@ let pythonProcess = null;
 let cameraEnabled = true;
 let backendStatus = 'stopped';
 let latestStressData = null;
+let backendHasSample = false;
 const appStartTime = Date.now();
 
 // --- Alert State Machine ---
@@ -37,6 +39,22 @@ const alertState = {
 
 // Sliding window of recent stress readings: { score, timestamp }
 const stressWindow = [];
+
+function shouldTriggerAlert(now) {
+  const checks = [
+    { threshold: CRITICAL_THRESHOLD, windowDuration: CRITICAL_TRIGGER_WINDOW },
+    { threshold: WARNING_THRESHOLD, windowDuration: WARNING_TRIGGER_WINDOW },
+  ];
+
+  return checks.some(({ threshold, windowDuration }) => {
+    const recent = stressWindow.filter(s => now - s.timestamp <= windowDuration);
+    const expectedSamples = Math.max(2, Math.floor(windowDuration / POLL_INTERVAL));
+    if (recent.length < expectedSamples) return false;
+
+    const aboveCount = recent.filter(s => s.score >= threshold).length;
+    return aboveCount / recent.length >= TRIGGER_RATIO;
+  });
+}
 
 function resetToIdle() {
   alertState.state = 'idle';
@@ -58,7 +76,9 @@ function sendToMonitor(channel, payload) {
 
 function getCameraStatus() {
   if (!cameraEnabled) return 'off';
-  if (latestStressData && latestStressData.camera_blocked) return 'blind';
+  if (!latestStressData) return 'blind';
+  if (latestStressData.camera_blocked) return 'blind';
+  if (backendStatus !== 'running') return 'blind';
   return 'ok';
 }
 
@@ -92,6 +112,7 @@ function processStressData(data) {
   if (!cameraEnabled) return;
   const now = Date.now();
   latestStressData = data;
+  backendHasSample = true;
 
   // Always push stress to UI
   sendToPet('stress-update', data);
@@ -114,35 +135,33 @@ function processStressData(data) {
   sendToPet('camera-status', 'ok');
   sendToMonitor('camera-status', 'ok');
 
+  const calibrationState = data.calibration && data.calibration.state;
+  if (calibrationState && calibrationState !== 'ready') {
+    stressWindow.length = 0;
+    resetToIdle();
+    publishMonitorState();
+    return;
+  }
+
   const score = data.stress_score || 0;
 
   // Add to sliding window
   stressWindow.push({ score, timestamp: now });
 
-  // Use shorter window for first trigger, normal window after
-  const windowDuration = alertState.hasTriggeredOnce ? NORMAL_TRIGGER_WINDOW : FIRST_TRIGGER_WINDOW;
-
   // Prune old entries outside the window
-  while (stressWindow.length > 0 && now - stressWindow[0].timestamp > windowDuration) {
+  while (stressWindow.length > 0 && now - stressWindow[0].timestamp > WARNING_TRIGGER_WINDOW) {
     stressWindow.shift();
   }
 
   switch (alertState.state) {
     case 'idle':
-      if (data.face_detected && stressWindow.length >= 3) {
-        const aboveCount = stressWindow.filter(s => s.score >= STRESS_THRESHOLD).length;
-        const ratio = aboveCount / stressWindow.length;
-        const expectedSamples = Math.floor(windowDuration / POLL_INTERVAL);
-        const windowFull = stressWindow.length >= expectedSamples * 0.7;
-
-        if (ratio >= TRIGGER_RATIO && windowFull) {
-          alertState.state = 'alert';
-          alertState.alertStart = now;
-          alertState.hasTriggeredOnce = true;
-          stressWindow.length = 0;
-          if (win && !win.isDestroyed()) {
-            win.webContents.executeJavaScript(`window.PetWidget.triggerSpeech()`);
-          }
+      if (data.face_detected && shouldTriggerAlert(now)) {
+        alertState.state = 'alert';
+        alertState.alertStart = now;
+        alertState.hasTriggeredOnce = true;
+        stressWindow.length = 0;
+        if (win && !win.isDestroyed()) {
+          win.webContents.executeJavaScript(`window.PetWidget.triggerSpeech()`);
         }
       }
       break;
@@ -194,8 +213,12 @@ function stopPolling() {
 function startPythonBackend() {
   if (pythonProcess || !cameraEnabled) return;
   const scriptPath = path.join(__dirname, '../backend/emotion_watch.py');
+  try { fs.unlinkSync(STRESS_JSON); } catch (e) {}
+  try { fs.unlinkSync(PREVIEW_IMAGE); } catch (e) {}
+  latestStressData = null;
   backendStatus = 'starting';
-  publishMonitorState();
+  backendHasSample = false;
+  publishCameraState();
   const child = spawn('python3', [scriptPath, '--headless'], {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false,
@@ -211,19 +234,19 @@ function startPythonBackend() {
     console.error('Failed to start Python backend:', err.message);
     if (pythonProcess === child) {
       backendStatus = 'error';
-      publishMonitorState();
+      publishCameraState();
     }
   });
   child.on('exit', (code) => {
     console.log(`Python backend exited with code ${code}`);
     if (pythonProcess === child) {
       pythonProcess = null;
-      backendStatus = cameraEnabled ? 'stopped' : 'off';
-      publishMonitorState();
+      backendStatus = cameraEnabled && !backendHasSample ? 'error' : (cameraEnabled ? 'stopped' : 'off');
+      publishCameraState();
     }
   });
   backendStatus = 'running';
-  publishMonitorState();
+  publishCameraState();
 }
 
 function stopPythonBackend() {
@@ -234,8 +257,9 @@ function stopPythonBackend() {
   try { fs.unlinkSync(STRESS_JSON); } catch (e) {}
   try { fs.unlinkSync(PREVIEW_IMAGE); } catch (e) {}
   backendStatus = cameraEnabled ? 'stopped' : 'off';
+  backendHasSample = false;
   latestStressData = null;
-  publishMonitorState();
+  publishCameraState();
 }
 
 function setCameraEnabled(enabled) {
